@@ -1,35 +1,10 @@
-## MLOps for SageMaker Endpoint Deployment
+# Explainable QA
+**Author:** Thomas Patton
 
-This is a sample code repository for demonstrating how you can organize your code for deploying an realtime inference Endpoint infrastructure. This code repository is created as part of creating a Project in SageMaker. 
+## Introduction
+The purpose of this repo is to hold all code used in developing an explainable question-answering model. For the time being, only one approach has been stored which is described below.
 
-This code repository has the code to find the latest approved ModelPackage for the associated ModelPackageGroup and automaticaly deploy it to the Endpoint on detecting a change (`build.py`). This code repository also defines the CloudFormation template which defines the Endpoints as infrastructure. It also has configuration files associated with `staging` and `prod` stages. 
+## Explainable BERT-QA
+The code for this project can be found in the ``/bert_qa/`` directory. The goal for this project was to find a way to generate an explanation for a pre-trained BERT question-answering model. An approach similar to the one mentioned [here](https://colab.research.google.com/drive/1tTiOgJ7xvy3sjfiFC9OozbjAX1ho8WN9?usp=sharing) was used. By computing a forward pass-through the BERT model, the gradients of the inputs can be tracked using TensorFlow's GradientTape. The length of these gradients quantify how much a change in the input dimension would affect the output, and therefore the answer. 
 
-Upon triggering a deployment, the CodePipeline pipeline will deploy 2 Endpoints - `staging` and `prod`. After the first deployment is completed, the CodePipeline waits for a manual approval step for promotion to the prod stage. You will need to go to CodePipeline AWS Managed Console to complete this step.
-
-You own this code and you can modify this template to change as you need it, add additional tests for your custom validation. 
-
-A description of some of the artifacts is provided below:
-
-
-## Layout of the SageMaker ModelBuild Project Template
-
-`buildspec.yml`
- - this file is used by the CodePipeline's Build stage to build a CloudFormation template.
-
-`build.py`
- - this python file contains code to get the latest approve package arn and exports staging and configuration files. This is invoked from the Build stage.
-
-`endpoint-config-template.yml`
- - this CloudFormation template file is packaged by the build step in the CodePipeline and is deployed in different stages.
-
-`staging-config.json`
- - this configuration file is used to customize `staging` stage in the pipeline. You can configure the instance type, instance count here.
-
-`prod-config.json`
- - this configuration file is used to customize `prod` stage in the pipeline. You can configure the instance type, instance count here.
-
-`test\buildspec.yml`
-  - this file is used by the CodePipeline's `staging` stage to run the test code of the following python file
-
-`test\test.py`
-  - this python file contains code to describe and invoke the staging endpoint. You can customize to add more tests here.
+All of the code for this was encapsulated into the ``gradients.py`` module with usage as demonstrated in ``gradients_demo.ipynb``. Here, the module is used to compute the gradients for a sample context and query. Though not viewable in GitHub, the responses are exported to an HTML with each word of the input passage highlighted according to its gradient.
