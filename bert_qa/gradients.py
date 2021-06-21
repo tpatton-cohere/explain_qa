@@ -33,7 +33,7 @@ def mask_scores(scores, best_idx, token_ids_size):
     return masked_scores
 
 
-def clean_tokens(gradients, token_words, token_types, mode='sum'):
+def clean_tokens(gradients, token_words, token_types, mode='sum', show_extra_tokens=True):
     """
     Cleans up the output of the QA model to be more readable
     
@@ -41,6 +41,8 @@ def clean_tokens(gradients, token_words, token_types, mode='sum'):
     gradients (list) - a list of the gradients
     token_words (list) - the words associated with the gradients
     token_types (list) - the type of each token
+    mode (str) - what method to apply to gradients when cleaning tokens
+    show_extra_tokens (bool) - whether or not to show tokens like [CLS], [SEP], etc
     
     returns:
     clean_gradients (list) - a list of cleaned gradients
@@ -54,7 +56,7 @@ def clean_tokens(gradients, token_words, token_types, mode='sum'):
     while i < len(token_words):
         token = token_words[i]
         j = i + 1
-        if token not in ['[CLS]', '[CLR]', '[SEP]']:
+        if token not in ['[CLS]', '[CLR]', '[SEP]'] or show_extra_tokens:
             grad = gradients[i]
             typ = token_types[i]
             while (j < len(token_words)) and (token_words[j][0:2] == '##'):
@@ -73,7 +75,7 @@ def clean_tokens(gradients, token_words, token_types, mode='sum'):
     return clean_gradients, clean_tokens, clean_token_types
 
 
-def get_gradients(model, tokenizer, question, context, mode='sum'):
+def get_gradients(model, tokenizer, question, context, mode='sum', show_extra_tokens=True):
     """
     Runs a forward-pass of a question-answering model and returns the gradients of the 
     output w.r.t. the input. This gradient quantifies how much a change in the input dimension
@@ -85,6 +87,7 @@ def get_gradients(model, tokenizer, question, context, mode='sum'):
     question (string) - the "question" string to feed into the QA model
     context (string) - the context to search for the answer in. no more than 512 characters
     mode (str) - what method to apply to gradients when cleaning tokens
+    show_extra_tokens (bool) - whether or not to show tokens like [CLS], [SEP], etc
     
     returns:
     gradient_df (pd.DataFrame) - a dataframe containing information about the words, their gradients, and their token type
@@ -125,7 +128,11 @@ def get_gradients(model, tokenizer, question, context, mode='sum'):
         answer_text = tokenizer.decode(token_ids[best_start:best_end])
         
         # (v) clean tokens
-        clean_gradients, clean_token_words, clean_token_types = clean_tokens(gradients, token_words, token_types, mode=mode)
+        clean_gradients, clean_token_words, clean_token_types = clean_tokens(gradients, 
+                                                                             token_words, 
+                                                                             token_types, 
+                                                                             mode=mode,
+                                                                             show_extra_tokens=show_extra_tokens)
         
         normalized_gradients = clean_gradients / np.max(clean_gradients)
         
