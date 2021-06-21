@@ -3,6 +3,7 @@
 # Author: Thomas Patton (thomas.patton@coherehealth.com)
 # (c) 2021 Cohere Health
 
+
 import os
 import numpy as np
 import pandas as pd
@@ -32,7 +33,49 @@ def mask_scores(scores, best_idx, token_ids_size):
     return masked_scores
 
 
-def get_gradients(model, tokenizer, question, context, verbose=False):
+def clean_tokens(gradients, token_words, token_types, mode='sum'):
+    """
+    Cleans up the output of the QA model to be more readable
+    
+    parameters:
+    gradients (list) - a list of the gradients
+    token_words (list) - the words associated with the gradients
+    token_types (list) - the type of each token
+    
+    returns:
+    clean_gradients (list) - a list of cleaned gradients
+    clean_tokens (list) - a list of cleaned tokens
+    clean_token_types (list) - a list of cleaned token types
+    """
+    clean_tokens = []
+    clean_gradients = []
+    clean_token_types = []
+    i = 0
+    while i < len(token_words):
+        token = token_words[i]
+        j = i + 1
+        if token not in ['[CLS]', '[CLR]', '[SEP]']:
+            grad = gradients[i]
+            typ = token_types[i]
+            while (j < len(token_words)) and (token_words[j][0:2] == '##'):
+                token += token_words[j][2:]
+                grad += gradients[j]
+                j += 1
+                
+            if mode is 'mean':
+                grad = grad / j
+                
+            clean_tokens.append(token)
+            clean_gradients.append(grad)
+            clean_token_types.append(typ)
+        i = j
+        
+        
+    print(len(clean_gradients), len(clean_tokens), len(clean_token_types))     
+    return clean_gradients, clean_tokens, clean_token_types
+
+
+def get_gradients(model, tokenizer, question, context, mode='sum'):
     """
     Runs a forward-pass of a question-answering model and returns the gradients of the 
     output w.r.t. the input. This gradient quantifies how much a change in the input dimension
@@ -43,7 +86,7 @@ def get_gradients(model, tokenizer, question, context, verbose=False):
     tokenizer (transformers.AutoTokenizer) - the QA tokenizer
     question (string) - the "question" string to feed into the QA model
     context (string) - the context to search for the answer in. no more than 512 characters
-    verbose (bool) - whether or not to print verbose output
+    mode (str) - what method to apply to gradients when cleaning tokens
     
     returns:
     gradient_df (pd.DataFrame) - a dataframe containing information about the words, their gradients, and their token type
@@ -78,22 +121,24 @@ def get_gradients(model, tokenizer, question, context, verbose=False):
         
         # (iv) compute and normalize gradients
         gradients = tf.norm(tape.gradient([mask_start_scores, mask_end_scores], token_ids_tensor_one_hot), axis=2).numpy()[0]
-        normalized_gradients = gradients / np.max(gradients)
         
         token_words = tokenizer.convert_ids_to_tokens(token_ids)
-        answer_text = tokenizer.decode(token_ids[best_start:best_end])
         token_types = list(encoded_tokens["token_type_ids"].numpy()[0])
+        answer_text = tokenizer.decode(token_ids[best_start:best_end])
         
-        # (v) organize results into a dataframe
-        gradient_df = pd.DataFrame({'word' : token_words,
+        # (v) clean tokens
+        clean_gradients, clean_token_words, clean_token_types = clean_tokens(gradients, token_words, token_types, mode=mode)
+        
+        normalized_gradients = clean_gradients / np.max(clean_gradients)
+        
+        # (vi) organize results into a dataframe
+        gradient_df = pd.DataFrame({'word' : clean_token_words,
                                     'gradient' : normalized_gradients,
-                                    'type' : token_types})
-        if verbose:
-            print(answer_text)
+                                    'type' : clean_token_types})
         return gradient_df
     
     
-def map_gradients(gradients, m=0.7, b=0.05):
+def map_gradients(gradients, m, b):
     """
     Map gradients using a y = mx + b schema. 
     
@@ -111,7 +156,7 @@ def map_gradients(gradients, m=0.7, b=0.05):
     return np.array(gradients)
     
 
-def html(words, gradients, m=0.7, b=0.05, thresh=0.0):
+def html(words, gradients, thresh=0.0, m=0.7, b=0.05):
     """
     Given a list of words and a list of gradients, returns an string in HTML format with
     the words highlighted according to their gradient
@@ -119,15 +164,15 @@ def html(words, gradients, m=0.7, b=0.05, thresh=0.0):
     parameters:
     words (list) - a list of words
     gradients (list) - a list of gradients
-    m (float) - the global multiplier to all gradients
+    thresh (float) - a value to use as a threshold for gradients to show
+    m (float) - the multiplier to all gradients
     b (float) - the global intercept to add to all gradients
-    thresh (float) - don't show any gradients below this number
     
     returns:
     ret_str (string) - an HTML string with text highlighted according to its gradient
     """
     ret_str = ''
-    mapped_grad = map_gradients(gradients)
+    mapped_grad = map_gradients(gradients, m=m, b=b)
     thresh_grad = np.where(mapped_grad > thresh, mapped_grad, 0)
     for i in range(len(words)):
         word = words[i]
