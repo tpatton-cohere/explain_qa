@@ -12,9 +12,18 @@ import torch
 from IPython.core.display import display, HTML
 from transformers import AutoTokenizer, TFBertForQuestionAnswering
 
+
 def mask_scores(scores, best_idx, token_ids_size):
     """
-    Unhappy this needs to be its own function
+    Uses a mask to only keep scores from the correct output region
+    
+    parameters:
+    scores (list) - a list of scores for masking
+    best_idx (int) - an index of the list to keep
+    token_ids_size (int) - the size of the tokens
+    
+    returns:
+    masked_scores (list) - the list of scores with only best_idx kept
     """
     mask = np.zeros((1, token_ids_size))
     mask[0, best_idx] = 1
@@ -79,19 +88,50 @@ def get_gradients(model, tokenizer, question, context, verbose=False):
         gradient_df = pd.DataFrame({'word' : token_words,
                                     'gradient' : normalized_gradients,
                                     'type' : token_types})
-        
+        if verbose:
+            print(answer_text)
         return gradient_df
     
+    
+def map_gradients(gradients, m=0.7, b=0.05):
+    """
+    Map gradients using a y = mx + b schema. 
+    
+    parameters:
+    gradients (list) - a list of gradients for mapping
+    m (float) - the global multiplier to all gradients
+    b (float) - the global intercept to add to all gradients
+    
+    returns:
+    (np.array) - an array of the mapped gradients
+    """
+    for i in range(len(gradients)):
+        gradients[i] = (gradients[i] * m) + b
+        
+    return np.array(gradients)
+    
 
-def html(words, gradients):
+def html(words, gradients, m=0.7, b=0.05, thresh=0.0):
     """
     Given a list of words and a list of gradients, returns an string in HTML format with
     the words highlighted according to their gradient
+    
+    parameters:
+    words (list) - a list of words
+    gradients (list) - a list of gradients
+    m (float) - the global multiplier to all gradients
+    b (float) - the global intercept to add to all gradients
+    thresh (float) - don't show any gradients below this number
+    
+    returns:
+    ret_str (string) - an HTML string with text highlighted according to its gradient
     """
     ret_str = ''
+    mapped_grad = map_gradients(gradients)
+    thresh_grad = np.where(mapped_grad > thresh, mapped_grad, 0)
     for i in range(len(words)):
         word = words[i]
-        grad_f = gradients[i] * 0.7 + 0.05
+        grad_f = thresh_grad[i]
         ret_str += f'<span style="background-color: hsla(110, 70%, 50%, {grad_f});">{word}</span><span> </span>'
         
     return ret_str
