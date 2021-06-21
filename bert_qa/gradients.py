@@ -63,15 +63,13 @@ def clean_tokens(gradients, token_words, token_types, mode='sum'):
                 j += 1
                 
             if mode is 'mean':
-                grad = grad / j
+                grad = grad / (j-i)
                 
             clean_tokens.append(token)
             clean_gradients.append(grad)
             clean_token_types.append(typ)
         i = j
-        
-        
-    print(len(clean_gradients), len(clean_tokens), len(clean_token_types))     
+         
     return clean_gradients, clean_tokens, clean_token_types
 
 
